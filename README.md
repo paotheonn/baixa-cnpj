@@ -28,6 +28,8 @@ MVP em Pandas com chunks. A arquitetura separa núcleo, API e interface para per
 - Exportação simultânea para CSV e Parquet.
 - Opções de limpeza dos arquivos brutos após exportar.
 
+> **Tempo de execução estimado:** 1h30 a 2h para uma UF inteira (download + processamento + exportação), dependendo da conexão e do hardware.
+
 ## Limites do MVP
 
 - Brasil inteiro não é foco do MVP.
