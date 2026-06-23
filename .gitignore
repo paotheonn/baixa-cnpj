@@ -1,0 +1,28 @@
+# Dados baixados/processados localmente
+dados/
+saida/
+
+# Virtual environment
+.venv/
+venv/
+__pycache__/
+
+# Arquivos temporários
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+*.log
+
+# Build/package artifacts
+build/
+dist/
+*.egg-info/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Arquivos Excel/CSV locais
+*.xlsx
+*.csv
+*.parquet
