@@ -76,6 +76,69 @@ def test_cli_api_runs_uvicorn_without_reload_by_default(monkeypatch):
     assert check is False
 
 
+def test_cli_run_brasil_builds_config_and_returns_zero(monkeypatch):
+    captured = {}
+
+    class FakeRunner:
+        def run(self, config, emit=None):
+            captured["config"] = config
+            if emit:
+                emit({"type": "done", "level": "success", "message": "ok", "timestamp": "2026-02-01T10:00:00+00:00"})
+            return None
+
+    monkeypatch.setattr("rf_cnpj.core.processor.PipelineRunner", FakeRunner)
+
+    exit_code = main(["run", "--scope", "brasil", "--month", "2026-05"])
+
+    assert exit_code == 0
+    config = captured["config"]
+    assert config.scope.type == "brasil"
+    assert config.scope.uf == ""
+    assert config.month == "2026-05"
+    assert config.output_name == "rf_cnpj_2026_05_br"
+    # Default cleanup and all tables selected.
+    assert config.cleanup_mode == "extracted"
+    assert config.options.include_socios is True
+
+
+def test_cli_run_uf_uses_uf_and_selected_tables(monkeypatch):
+    captured = {}
+
+    class FakeRunner:
+        def run(self, config, emit=None):
+            captured["config"] = config
+            return None
+
+    monkeypatch.setattr("rf_cnpj.core.processor.PipelineRunner", FakeRunner)
+
+    exit_code = main([
+        "run", "--scope", "uf", "--month", "2026-05", "--uf", "PE",
+        "--tables", "CNAEs", "Paises", "--cleanup", "none",
+    ])
+
+    assert exit_code == 0
+    config = captured["config"]
+    assert config.scope.type == "uf"
+    assert config.scope.uf == "PE"
+    assert config.output_name == "rf_cnpj_2026_05_pe"
+    assert config.cleanup_mode == "none"
+    assert config.options.include_cnaes is True
+    assert config.options.include_paises is True
+    assert config.options.include_socios is False
+
+
+def test_cli_run_returns_one_when_pipeline_raises(monkeypatch):
+    class FakeRunner:
+        def run(self, config, emit=None):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("rf_cnpj.core.processor.PipelineRunner", FakeRunner)
+
+    exit_code = main(["run", "--scope", "brasil", "--month", "2026-05"])
+
+    assert exit_code == 1
+
+
 def test_streamlit_helpers_build_output_name_and_options():
     assert build_output_name(month="2026-02", uf="PE", municipio="Recife") == "rf_cnpj_2026_02_pe_recife"
 
