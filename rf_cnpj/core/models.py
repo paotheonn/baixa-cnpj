@@ -9,10 +9,10 @@ from typing import Literal
 
 @dataclass(frozen=True)
 class Scope:
-    """Processing scope: one UF or one municipality inside a UF."""
+    """Processing scope: whole country, one UF, or one municipality inside a UF."""
 
-    type: Literal["uf", "municipio"]
-    uf: str
+    type: Literal["brasil", "uf", "municipio"]
+    uf: str = ""
     municipio: str | None = None
 
     def __post_init__(self) -> None:
@@ -20,9 +20,9 @@ class Scope:
         uf = self.uf.upper().strip()
         municipio = self.municipio.strip().upper() if self.municipio else None
 
-        if scope_type not in {"uf", "municipio"}:
-            raise ValueError("Scope.type deve ser 'uf' ou 'municipio'.")
-        if len(uf) != 2:
+        if scope_type not in {"brasil", "uf", "municipio"}:
+            raise ValueError("Scope.type deve ser 'brasil', 'uf' ou 'municipio'.")
+        if scope_type != "brasil" and len(uf) != 2:
             raise ValueError("UF deve ter duas letras.")
         if scope_type == "municipio" and not municipio:
             raise ValueError("Municipio é obrigatório quando scope.type='municipio'.")

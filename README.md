@@ -15,7 +15,8 @@ MVP em Pandas com chunks. A arquitetura separa núcleo, API e interface para per
 - Comando `rf-cnpj api` para abrir a API.
 - Comando `rf-cnpj web` para abrir o frontend Next.js a partir da raiz do repo.
 - Download automático dos ZIPs da Receita Federal.
-- Processamento por UF inteira ou município específico.
+- Processamento por Brasil inteiro, UF inteira ou município específico.
+- Brasil inteiro processado UF a UF, com checkpoint retomável em caso de falha.
 - Tabelas auxiliares selecionáveis:
   - CNAEs
   - Simples/MEI
@@ -28,11 +29,10 @@ MVP em Pandas com chunks. A arquitetura separa núcleo, API e interface para per
 - Exportação simultânea para CSV e Parquet.
 - Opções de limpeza dos arquivos brutos após exportar.
 
-> **Tempo de execução estimado:** 1h30 a 2h para uma UF inteira (download + processamento + exportação), dependendo da conexão e do hardware.
+> **Tempo de execução estimado:** 1h30 a 2h para uma UF inteira (download + processamento + exportação), dependendo da conexão e do hardware. O Brasil inteiro processa as 27 UFs em sequência e pode levar várias horas; se a execução cair, basta rodar de novo com o mesmo mês e saída para retomar de onde parou.
 
 ## Limites do MVP
 
-- Brasil inteiro não é foco do MVP.
 - Geocodificação não faz parte do núcleo inicial.
 - A base pública da RF não fornece e-mail pessoal de sócios. O campo `EMAIL` vem do estabelecimento.
 
@@ -88,7 +88,7 @@ Depois abra `http://localhost:3000`.
 Na interface, selecione:
 
 1. Mês da base RF.
-2. Escopo: UF inteira ou município.
+2. Escopo: Brasil inteiro, UF inteira ou município.
 3. Tabelas auxiliares.
 4. Diretório de dados e saída.
 5. Política de limpeza.

@@ -56,7 +56,14 @@ def options_from_labels(labels: list[str]) -> ProcessingOptions:
     return ProcessingOptions(**values)
 
 
-def build_output_name(month: str, uf: str, municipio: str | None = None) -> str:
+def build_output_name(
+    month: str,
+    uf: str = "",
+    municipio: str | None = None,
+    scope_type: str = "uf",
+) -> str:
+    if scope_type == "brasil":
+        return safe_filename("_".join(["rf_cnpj", month.replace("-", "_"), "BR"]))
     parts = ["rf_cnpj", month.replace("-", "_"), uf]
     if municipio:
         parts.append(municipio)

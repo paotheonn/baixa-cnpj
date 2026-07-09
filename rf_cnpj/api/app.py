@@ -26,8 +26,8 @@ class RunRequest(BaseModel):
     month: str = Field(pattern=r"^\d{4}-\d{2}$")
     data_dir: str = "dados"
     output_dir: str = "saida"
-    scope_type: Literal["uf", "municipio"]
-    uf: str = Field(min_length=2, max_length=2)
+    scope_type: Literal["brasil", "uf", "municipio"]
+    uf: str = ""
     municipio: str | None = None
     tables: list[str] = Field(default_factory=list)
     cleanup_mode: Literal["none", "extracted", "all_raw"] = "extracted"
@@ -52,7 +52,7 @@ class StateOption(BaseModel):
 class OptionsResponse(BaseModel):
     tables: list[str]
     cleanup_modes: list[str]
-    scope_types: list[Literal["uf", "municipio"]]
+    scope_types: list[Literal["brasil", "uf", "municipio"]]
     months: list[str]
     states: list[StateOption]
 
@@ -105,7 +105,7 @@ def create_app(
         return OptionsResponse(
             tables=list(TABLE_LABELS.keys()),
             cleanup_modes=["extracted", "none", "all_raw"],
-            scope_types=["uf", "municipio"],
+            scope_types=["brasil", "uf", "municipio"],
             months=months,
             states=[StateOption(**state) for state in BRAZIL_STATES],
         )
@@ -155,11 +155,15 @@ def create_app(
 
 
 def _run_config(request: RunRequest) -> RunConfig:
+    if request.scope_type == "brasil":
+        scope = Scope(type="brasil")
+    else:
+        scope = Scope(type=request.scope_type, uf=request.uf, municipio=request.municipio)
     return RunConfig(
         month=request.month,
         data_dir=Path(request.data_dir),
         output_dir=Path(request.output_dir),
-        scope=Scope(type=request.scope_type, uf=request.uf, municipio=request.municipio),
+        scope=scope,
         options=options_from_labels(request.tables),
         output_name=request.output_name,
         cleanup_mode=request.cleanup_mode,

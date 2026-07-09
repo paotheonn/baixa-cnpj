@@ -58,7 +58,7 @@ const FALLBACK_OPTIONS: PipelineOptions = {
     "Socios/QSA",
   ],
   cleanup_modes: ["extracted", "none", "all_raw"],
-  scope_types: ["uf", "municipio"],
+  scope_types: ["brasil", "uf", "municipio"],
   months: [],
   states: [],
 }
@@ -107,7 +107,7 @@ export function PipelineConsole() {
   const [dataDir, setDataDir] = useState("dados")
   const [outputDir, setOutputDir] = useState("saida")
   const [uf, setUf] = useState("")
-  const [scopeType, setScopeType] = useState<"uf" | "municipio">("uf")
+  const [scopeType, setScopeType] = useState<"brasil" | "uf" | "municipio">("uf")
   const [municipio, setMunicipio] = useState("")
   const [municipios, setMunicipios] = useState<MunicipioOption[]>([])
   const municipiosLoading = month !== "" && uf !== "" && scopeType === "municipio" && municipios.length === 0
@@ -118,7 +118,11 @@ export function PipelineConsole() {
     "extracted"
   )
   const outputName = (() => {
-    if (month && uf) {
+    if (!month) return ""
+    if (scopeType === "brasil") {
+      return `rf_cnpj_${month.replace("-", "_")}_BR`
+    }
+    if (uf) {
       const suffix = scopeType === "municipio" && municipio
         ? municipio.toLowerCase().replace(/\s+/g, "_")
         : uf.toLowerCase()
@@ -194,7 +198,7 @@ export function PipelineConsole() {
         data_dir: dataDir,
         output_dir: outputDir,
         scope_type: scopeType,
-        uf,
+        uf: scopeType === "brasil" ? "" : uf,
         municipio: scopeType === "municipio" ? municipio : null,
         tables: selectedTables,
         cleanup_mode: cleanupMode,
@@ -293,25 +297,39 @@ export function PipelineConsole() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field>
-                      <FieldLabel htmlFor="uf">UF</FieldLabel>
-                      <Select value={uf} onValueChange={(value) => { if (value) setUf(value) }}>
-                        <SelectTrigger id="uf" aria-label="UF" className="w-full">
-                          <SelectValue placeholder="Selecione a UF" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {options.states.map((s) => (
-                              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </Field>
+                    {scopeType !== "brasil" && (
+                      <Field>
+                        <FieldLabel htmlFor="uf">UF</FieldLabel>
+                        <Select value={uf} onValueChange={(value) => { if (value) setUf(value) }}>
+                          <SelectTrigger id="uf" aria-label="UF" className="w-full">
+                            <SelectValue placeholder="Selecione a UF" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {options.states.map((s) => (
+                                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    )}
                   </div>
                   <FieldSet className="mt-4">
                     <FieldLegend>Escopo geografico</FieldLegend>
-                    <FieldGroup className="flex gap-4">
+                    <FieldGroup className="flex flex-wrap gap-4">
+                      <Field orientation="horizontal">
+                        <input
+                          type="radio"
+                          id="scope-brasil"
+                          name="scope_type"
+                          value="brasil"
+                          checked={scopeType === "brasil"}
+                          onChange={() => setScopeType("brasil")}
+                          className="mt-1"
+                        />
+                        <FieldLabel htmlFor="scope-brasil">Brasil inteiro</FieldLabel>
+                      </Field>
                       <Field orientation="horizontal">
                         <input
                           type="radio"
@@ -337,6 +355,16 @@ export function PipelineConsole() {
                         <FieldLabel htmlFor="scope-municipio">Municipio</FieldLabel>
                       </Field>
                     </FieldGroup>
+                    {scopeType === "brasil" && (
+                      <Alert className="mt-3">
+                        <AlertTitle>Execucao longa</AlertTitle>
+                        <AlertDescription>
+                          O Brasil inteiro processa as 27 UFs em sequencia e pode levar varias horas.
+                          Se a execucao for interrompida, rode novamente com o mesmo mes e saida para
+                          retomar de onde parou.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                     {scopeType === "municipio" && (
                       <Field className="mt-3">
                         <FieldLabel htmlFor="municipio">Municipio</FieldLabel>

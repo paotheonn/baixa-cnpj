@@ -3,10 +3,12 @@ export type StateOption = {
   label: string
 }
 
+export type ScopeType = "brasil" | "uf" | "municipio"
+
 export type PipelineOptions = {
   tables: string[]
   cleanup_modes: string[]
-  scope_types: Array<"uf" | "municipio">
+  scope_types: ScopeType[]
   months: string[]
   states: StateOption[]
 }
@@ -24,7 +26,7 @@ export type RunPipelinePayload = {
   month: string
   data_dir: string
   output_dir: string
-  scope_type: "uf" | "municipio"
+  scope_type: ScopeType
   uf: string
   municipio?: string | null
   tables: string[]

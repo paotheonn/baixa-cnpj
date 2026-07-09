@@ -48,7 +48,7 @@ def test_options_endpoint_exposes_ui_choices():
     assert "CNAEs" in payload["tables"]
     assert "Socios/QSA" in payload["tables"]
     assert "extracted" in payload["cleanup_modes"]
-    assert payload["scope_types"] == ["uf", "municipio"]
+    assert payload["scope_types"] == ["brasil", "uf", "municipio"]
     assert payload["months"] == ["2026-01", "2026-02"]
     assert {"value": "PE", "label": "PE - Pernambuco"} in payload["states"]
 
@@ -138,6 +138,30 @@ def test_run_endpoint_builds_config_and_returns_export_result():
     assert config.options.include_cnaes is True
     assert config.options.include_socios is True
     assert config.options.include_simples is False
+
+
+def test_run_endpoint_accepts_brasil_scope_without_uf():
+    runner = FakeRunner()
+    client = TestClient(create_app(runner=runner))
+
+    response = client.post(
+        "/runs",
+        json={
+            "month": "2026-02",
+            "data_dir": "dados",
+            "output_dir": "saida",
+            "scope_type": "brasil",
+            "tables": ["CNAEs"],
+            "cleanup_mode": "extracted",
+            "output_name": "rf_cnpj_2026_02_BR",
+        },
+    )
+
+    assert response.status_code == 200
+    config = runner.configs[0]
+    assert config.scope.type == "brasil"
+    assert config.scope.uf == ""
+    assert config.scope.municipio is None
 
 
 def test_run_job_endpoint_streams_events_until_done():
