@@ -1,48 +1,91 @@
 # RF CNPJ
 
-Pipeline local e open source para baixar, cruzar e exportar bases públicas de CNPJ da Receita Federal sem editar código.
+Pipeline local para baixar os dados públicos de CNPJ da Receita Federal, cruzar as tabelas escolhidas e exportar CSV e Parquet.
 
-O projeto usa um núcleo Python para download/processamento, uma API local FastAPI e uma interface Next.js com shadcn/ui. A interface chama a API local, que baixa automaticamente os arquivos da RF, cruza as tabelas selecionadas e gera saídas em CSV e Parquet.
+## Contexto
 
-## Status
+A Receita Federal publica, todo mês, os dados abertos de CNPJ em vários ZIPs: estabelecimentos, empresas, sócios e tabelas de domínio (CNAE, natureza jurídica, municípios e outras). Consultar um município, uma UF ou o país inteiro exige baixar esses arquivos, extrair, traduzir códigos e juntar as tabelas.
 
-MVP em Pandas com chunks. A arquitetura separa núcleo, API e interface para permitir uma evolução futura para DuckDB ou outra UI sem reescrever o processamento.
+Este repositório faz esse trabalho na máquina de quem executa o projeto. A interface e a API sobem em localhost e os arquivos ficam em disco.
 
-## Funcionalidades
+## O que o projeto faz
 
-- Interface local em Next.js + shadcn/ui.
-- API local com FastAPI.
-- Comando `rf-cnpj api` para abrir a API.
-- Comando `rf-cnpj web` para abrir o frontend Next.js a partir da raiz do repo.
-- Download automático dos ZIPs da Receita Federal.
-- Processamento por Brasil inteiro, UF inteira ou município específico.
-- Brasil inteiro processado UF a UF, com checkpoint retomável em caso de falha.
-- Tabelas auxiliares selecionáveis:
-  - CNAEs
-  - Simples/MEI
-  - Motivos de situação cadastral
-  - Naturezas jurídicas
-  - Qualificações
-  - Países
-  - Sócios/QSA
-- Sócios agregados em uma linha por CNPJ.
-- Exportação simultânea para CSV e Parquet.
-- Opções de limpeza dos arquivos brutos após exportar.
+- Baixa os ZIPs do compartilhamento público da Receita Federal via WebDAV.
+- Descobre os meses disponíveis nesse compartilhamento.
+- Extrai os ZIPs e rejeita caminhos que tentam sair da pasta de destino.
+- Cruza estabelecimentos com empresas e com as tabelas auxiliares escolhidas.
+- Agrega sócios em uma linha por CNPJ.
+- Exporta o mesmo resultado em CSV (UTF-8 com BOM) e Parquet.
+- Processa um município, uma UF ou o Brasil inteiro. No Brasil inteiro, o processamento percorre as 27 UFs e grava um checkpoint por UF concluída.
+- Oferece interface Next.js, API FastAPI e o comando `rf-cnpj run`.
+- Pode apagar só os arquivos extraídos, ou também os ZIPs, depois da exportação.
 
-> **Tempo de execução estimado:** 1h30 a 2h para uma UF inteira (download + processamento + exportação), dependendo da conexão e do hardware. O Brasil inteiro processa as 27 UFs em sequência e pode levar várias horas; se a execução cair, basta rodar de novo com o mesmo mês e saída para retomar de onde parou.
+O campo `EMAIL` da saída vem do estabelecimento. A base pública não inclui e-mail pessoal de sócio.
 
-## Limites do MVP
+Tempo de execução estimado neste projeto: cerca de 1h30 a 2h para uma UF inteira, somando download, processamento e exportação, conforme a conexão e o hardware. O Brasil inteiro percorre as 27 UFs em sequência e pode levar várias horas. Se a execução cair, rode de novo com o mesmo mês e a mesma saída para continuar das UFs já gravadas no manifesto.
 
-- Geocodificação não faz parte do núcleo inicial.
-- A base pública da RF não fornece e-mail pessoal de sócios. O campo `EMAIL` vem do estabelecimento.
+## Stack
 
-## Instalação
+- Python 3.10+
+- pandas e PyArrow, com leitura em chunks
+- FastAPI e Uvicorn
+- Requests para o WebDAV da Receita Federal
+- Next.js 16, React 19, Tailwind CSS e shadcn/ui
 
-Instale o backend Python:
+## Arquitetura
+
+```mermaid
+flowchart TD
+  subgraph entrada [Entrada]
+    Web[Interface Next.js]
+    CLI[Comando rf-cnpj run]
+  end
+  Web --> API[API FastAPI]
+  API --> Runner[PipelineRunner]
+  CLI --> Runner
+  Runner --> Download[Download WebDAV]
+  Download --> Zips[ZIPs em dados/receita_federal]
+  Zips --> Extract[Extracao segura]
+  Extract --> Engine[PandasCNPJEngine]
+  Engine --> UfMun[CSV e Parquet]
+  Engine --> Brasil[Partes por UF e manifesto]
+  Brasil --> Merge[CSV e Parquet unicos]
+```
+
+A API monta um `RunConfig` e chama `PipelineRunner`. O runner baixa, extrai, processa, exporta e limpa. A engine Pandas é a implementação atual e entra no runner por parâmetro.
+
+No escopo Brasil, o download ocorre uma vez. Cada UF é processada com a engine atual, gravada em `<nome>.parts/` e registrada em `<nome>.manifest.json` só depois que o CSV e o Parquet daquela UF ficam completos. Uma UF interrompida no meio fica de fora do manifesto e é refeita na próxima execução. No fim, as partes são unidas em um CSV e um Parquet.
+
+## Como rodar localmente
+
+Requisitos: Python 3.10 ou superior, Node.js e npm.
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 pip install .
+cp .env.example .env
+```
+
+No Windows, ative o ambiente com `.venv\Scripts\activate`.
+
+Preencha `RF_NEXTCLOUD_SHARE_TOKEN` no `.env`. O valor é o identificador público do compartilhamento de dados abertos de CNPJ, o trecho final da URL `index.php/s/<identificador>`. A página de orientação da Receita Federal está em:
+
+https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/cadastros/consultas/dados-publicos-cnpj
+
+O download e a listagem de meses leem o `.env` da raiz. Variável já definida no shell tem prioridade sobre o arquivo.
+
+| Variável | Obrigatória | Uso |
+| --- | --- | --- |
+| `RF_NEXTCLOUD_SHARE_TOKEN` | sim, para baixar arquivos e listar meses | Identificador público do compartilhamento WebDAV |
+| `RF_NEXTCLOUD_WEBDAV_URL` | não | Endpoint WebDAV. Vazia usa o endpoint público da Receita Federal |
+| `NEXT_PUBLIC_RF_CNPJ_API_URL` | não | URL da API vista pelo frontend. Padrão `http://127.0.0.1:8000`. O Next.js lê essa variável em `web/.env.local` |
+
+Para apontar o frontend a outra API:
+
+```bash
+cp web/.env.example web/.env.local
 ```
 
 Instale o frontend:
@@ -52,8 +95,6 @@ cd web
 npm install
 ```
 
-## Uso
-
 Abra dois terminais na raiz do repositório.
 
 Terminal 1, API local:
@@ -62,54 +103,74 @@ Terminal 1, API local:
 rf-cnpj api
 ```
 
-Terminal 2, interface web:
+Terminal 2, interface:
 
 ```bash
 rf-cnpj web
 ```
 
-Se o Windows não encontrar `rf-cnpj`, rode pelos módulos Python sem depender do PATH:
+Se `rf-cnpj` não estiver no PATH:
 
 ```bash
 python -m rf_cnpj api
 python -m rf_cnpj web
 ```
 
-Alternativa sem instalar o pacote Python:
+Sem instalar o pacote Python:
 
 ```bash
 python -m uvicorn rf_cnpj.api.app:app --reload
-cd web
-npm run dev
 ```
 
-Depois abra `http://localhost:3000`.
+e, na pasta `web`, `npm run dev`.
 
-Na interface, selecione:
+Abra `http://localhost:3000`. Na interface, escolha o mês, o escopo (Brasil, UF ou município), as tabelas auxiliares, os diretórios de dados e de saída, e a política de limpeza.
 
-1. Mês da base RF.
-2. Escopo: Brasil inteiro, UF inteira ou município.
-3. Tabelas auxiliares.
-4. Diretório de dados e saída.
-5. Política de limpeza.
+Execução sem interface:
 
-Ao finalizar, o app gera dois arquivos:
+```bash
+rf-cnpj run --month 2026-01 --scope uf --uf PE --data-dir dados --output-dir saida
+```
+
+`--scope` aceita `brasil`, `uf` e `municipio`. Para município, informe também `--municipio`. `--tables` recebe zero ou mais rótulos, e o padrão é incluir todas: `CNAEs`, `Simples/MEI`, `Motivos`, `Naturezas Juridicas`, `Qualificacoes`, `Paises`, `Socios/QSA`. `--cleanup` aceita `none`, `extracted` e `all_raw`.
+
+A saída fica em `saida/`:
 
 - `<nome>.csv`
 - `<nome>.parquet`
+
+Durante o escopo Brasil também aparecem `<nome>.parts/` e `<nome>.manifest.json`. Esses arquivos temporários saem depois do merge.
 
 ## Estrutura
 
 ```text
 rf_cnpj/
-  api/                  # FastAPI local
-  core/                 # Download, extração, schemas, normalização, exportação
-  engines/              # Engine Pandas atual
-web/                    # Next.js + shadcn/ui
-tests/                  # Testes com fixtures pequenas
-pyproject.toml          # Package metadata e entrypoint rf-cnpj
-requirements.txt        # Dependências Python runtime/teste
+  api/         # FastAPI: opções, jobs e eventos da execução
+  app/         # pacote de interface local; a UI atual está em web/
+  core/        # download, meses, extração, schemas, normalização e exportação
+  engines/     # engine Pandas em chunks
+  cli.py       # comandos api, web e run
+web/           # interface Next.js e shadcn/ui
+tests/         # testes com fixtures pequenas
+docs/superpowers/  # specs e planos de desenho
+pyproject.toml
+requirements.txt
+.env.example
 ```
+
+O Git ignora `dados/`, `saida/`, `.venv/`, `.env` e arquivos de credencial. `.env.example` permanece no repositório, só com nomes de variáveis.
+
+## Limites atuais
+
+- A engine segura em memória os estabelecimentos do escopo filtrado. O Brasil inteiro é processado UF a UF por esse motivo.
+- Geocodificação não faz parte do núcleo.
+- A lista de municípios da interface usa o CSV público `municipios.csv` da Receita Federal, separado dos ZIPs do mês.
+
+## Próximos passos possíveis
+
+- Trocar a engine Pandas por outra, como DuckDB, que processe o país sem o loop por UF. `PipelineRunner` já recebe a engine por parâmetro.
+- Incluir geocodificação depois da exportação.
+- Acrescentar um teste de integração com um mês pequeno já presente em disco, sem chamada de rede.
 
 ## Desenvolvimento
 
@@ -126,5 +187,3 @@ cd web
 npm run lint
 npm run build
 ```
-
-O núcleo foi desenhado para que a API apenas monte um `RunConfig` e chame `PipelineRunner`. Isso facilita substituir a engine Pandas por DuckDB depois, ou expor o mesmo núcleo para outra interface.

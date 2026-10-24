@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import zipfile
 
@@ -11,8 +12,76 @@ from .events import EventEmitter, emit_event, format_bytes
 from .models import ProcessingOptions
 from .schemas import DOWNLOAD_GROUP_FILES, REQUIRED_DOWNLOAD_GROUPS
 
-NEXTCLOUD_SHARE_TOKEN = "YggdBLfdninEJX9"
-NEXTCLOUD_WEBDAV_URL = "https://arquivos.receitafederal.gov.br/public.php/webdav/"
+DEFAULT_NEXTCLOUD_WEBDAV_URL = "https://arquivos.receitafederal.gov.br/public.php/webdav/"
+SHARE_TOKEN_ENV = "RF_NEXTCLOUD_SHARE_TOKEN"
+WEBDAV_URL_ENV = "RF_NEXTCLOUD_WEBDAV_URL"
+
+
+def _dotenv_candidates() -> list[Path]:
+    return [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parents[2] / ".env",
+    ]
+
+
+def _apply_dotenv(path: Path) -> None:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        if value == "":
+            continue
+        os.environ[key] = value
+
+
+def _load_local_dotenv() -> None:
+    """Load a local .env without overriding variables already set in the environment."""
+    seen: set[Path] = set()
+    for path in _dotenv_candidates():
+        try:
+            resolved = path.resolve()
+        except OSError:
+            continue
+        if resolved in seen or not path.is_file():
+            continue
+        seen.add(resolved)
+        _apply_dotenv(path)
+
+
+def nextcloud_share_token() -> str:
+    """Public Receita Federal share id, read from the environment."""
+    _load_local_dotenv()
+    token = os.getenv(SHARE_TOKEN_ENV, "").strip()
+    if not token:
+        raise RuntimeError(
+            "Defina RF_NEXTCLOUD_SHARE_TOKEN com o identificador publico do "
+            "compartilhamento de dados abertos da Receita Federal. Veja .env.example."
+        )
+    return token
+
+
+def nextcloud_webdav_url() -> str:
+    _load_local_dotenv()
+    configured = os.getenv(WEBDAV_URL_ENV, "").strip()
+    base = configured or DEFAULT_NEXTCLOUD_WEBDAV_URL
+    if not base.endswith("/"):
+        base += "/"
+    return base
 
 
 def planned_download_files(options: ProcessingOptions) -> list[str]:
@@ -72,10 +141,11 @@ class DownloaderRF:
             target.unlink()
         partial = target.with_name(f"{target.name}.part")
 
-        url = f"{NEXTCLOUD_WEBDAV_URL}{month}/{filename}"
+        token = nextcloud_share_token()
+        url = f"{nextcloud_webdav_url()}{month}/{filename}"
         try:
             emit_event(self.emit, "download_start", f"Baixando {filename}", data={"filename": filename, "url": url})
-            with self.session.get(url, auth=(NEXTCLOUD_SHARE_TOKEN, ""), stream=True, timeout=120) as response:
+            with self.session.get(url, auth=(token, ""), stream=True, timeout=120) as response:
                 response.raise_for_status()
                 total = None
                 content_length = getattr(response, "headers", {}).get("content-length")

@@ -26,3 +26,21 @@ dist/
 *.xlsx
 *.csv
 *.parquet
+
+# Dependencias e saidas de build
+node_modules/
+.next/
+out/
+coverage/
+
+# Segredos e credenciais locais
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+*credentials*.json
+service-account*.json
+serviceAccount*.json

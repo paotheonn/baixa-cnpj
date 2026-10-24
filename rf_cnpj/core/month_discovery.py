@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 
 import requests
 
-from .downloader import NEXTCLOUD_SHARE_TOKEN, NEXTCLOUD_WEBDAV_URL
+from .downloader import nextcloud_share_token, nextcloud_webdav_url
 
 MONTH_RE = re.compile(r"(\d{4})-(\d{2})/?$")
 
@@ -47,8 +47,8 @@ class MonthDiscovery:
     def fetch_available_months(self) -> list[str]:
         response = self.session.request(
             "PROPFIND",
-            NEXTCLOUD_WEBDAV_URL,
-            auth=(NEXTCLOUD_SHARE_TOKEN, ""),
+            nextcloud_webdav_url(),
+            auth=(nextcloud_share_token(), ""),
             headers={"Depth": "1"},
             timeout=30,
         )

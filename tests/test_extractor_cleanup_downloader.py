@@ -1,3 +1,4 @@
+import os
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -5,9 +6,14 @@ from pathlib import Path
 import pytest
 
 from rf_cnpj.core.cleanup import cleanup_raw_files
-from rf_cnpj.core.downloader import DownloaderRF, planned_download_files
+from rf_cnpj.core.downloader import DownloaderRF, nextcloud_share_token, nextcloud_webdav_url, planned_download_files
 from rf_cnpj.core.extractor import MonthExtractor, extract_zip_safely
 from rf_cnpj.core.models import ProcessingOptions
+
+
+@pytest.fixture(autouse=True)
+def _share_token(monkeypatch):
+    monkeypatch.setenv("RF_NEXTCLOUD_SHARE_TOKEN", "test-share-token")
 
 
 def test_extract_zip_safely_normalizes_output_name(tmp_path):
@@ -46,6 +52,43 @@ def test_extract_zip_safely_rejects_path_traversal(tmp_path):
 
     with pytest.raises(ValueError, match="unsafe"):
         extract_zip_safely(zip_path, tmp_path)
+
+
+def test_share_token_requires_environment(monkeypatch):
+    monkeypatch.delenv("RF_NEXTCLOUD_SHARE_TOKEN", raising=False)
+    monkeypatch.setattr("rf_cnpj.core.downloader._load_local_dotenv", lambda: None)
+
+    with pytest.raises(RuntimeError, match="RF_NEXTCLOUD_SHARE_TOKEN"):
+        nextcloud_share_token()
+
+
+def test_share_token_reads_dotenv_without_overriding_environment(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text('RF_NEXTCLOUD_SHARE_TOKEN="from-dotenv-file"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("RF_NEXTCLOUD_SHARE_TOKEN", raising=False)
+
+    try:
+        assert nextcloud_share_token() == "from-dotenv-file"
+        monkeypatch.setenv("RF_NEXTCLOUD_SHARE_TOKEN", "from-environment")
+        assert nextcloud_share_token() == "from-environment"
+    finally:
+        os.environ.pop("RF_NEXTCLOUD_SHARE_TOKEN", None)
+
+
+def test_webdav_url_uses_public_default_and_normalizes_slash(monkeypatch):
+    monkeypatch.delenv("RF_NEXTCLOUD_WEBDAV_URL", raising=False)
+    assert nextcloud_webdav_url().endswith("/")
+    assert "arquivos.receitafederal.gov.br" in nextcloud_webdav_url()
+
+    monkeypatch.setenv("RF_NEXTCLOUD_WEBDAV_URL", "https://example.test/webdav")
+    assert nextcloud_webdav_url() == "https://example.test/webdav/"
+
+
+def test_downloader_source_does_not_assign_a_share_token_literal():
+    source = (Path(__file__).resolve().parents[1] / "rf_cnpj" / "core" / "downloader.py").read_text(encoding="utf-8")
+    assert 'NEXTCLOUD_SHARE_TOKEN = "' not in source
+    assert "nextcloud_share_token()" in source
 
 
 def test_planned_download_files_includes_required_and_selected_tables():
@@ -138,8 +181,10 @@ class SuccessfulSession:
         self.payload = payload
         self.calls = 0
 
-    def get(self, *args, **kwargs):
+    def get(self, url, *args, **kwargs):
         self.calls += 1
+        self.last_url = url
+        self.last_kwargs = kwargs
         return SuccessfulResponse(self.payload)
 
 
@@ -174,6 +219,18 @@ def test_downloader_rejects_new_invalid_zip_payload(tmp_path):
     month_dir = tmp_path / "receita_federal" / "2026-02"
     assert not (month_dir / "Empresas0.zip").exists()
     assert not (month_dir / "Empresas0.zip.part").exists()
+
+
+def test_downloader_uses_share_token_from_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("RF_NEXTCLOUD_SHARE_TOKEN", "test-share-token")
+    monkeypatch.setenv("RF_NEXTCLOUD_WEBDAV_URL", "https://example.test/webdav/")
+    session = SuccessfulSession(valid_zip_payload())
+    downloader = DownloaderRF(tmp_path, session=session)
+
+    downloader.download_file("2026-02", "Empresas0.zip")
+
+    assert session.last_url == "https://example.test/webdav/2026-02/Empresas0.zip"
+    assert session.last_kwargs["auth"] == ("test-share-token", "")
 
 
 def test_downloader_emits_download_progress_events(tmp_path):
